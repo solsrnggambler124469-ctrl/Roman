@@ -57,6 +57,8 @@ AST_T* Visitor_Visit(Visitor_T* visitor, AST_T* node){
         case AST_BINOP: return VV_BinOp(visitor, node); break;
         case AST_ARROW: return VV_Arrow(visitor, node); break;
         case AST_RETURN: return VV_Return(visitor, node); break;
+        case AST_ASSIGNMENT: return VV_Assignment(visitor, node); break;
+        case AST_CLASS_INSTANTIATION: return VV_Class_Instantiation(visitor, node); break;
         case AST_VARIABLE: return VV_Variable(visitor, node); break;
         case AST_STRING: return VV_String(visitor, node); break;
         case AST_NUMBER: return VV_Number(visitor, node); break;
@@ -140,6 +142,9 @@ AST_T* VV_If_Else(Visitor_T* visitor, AST_T* node) {
     return Visitor_Visit(visitor, node->if_else_body);
 };
 AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
+    // node->for_variable must be a 'var name = expr' definition — that's the
+    // only form the grammar produces a usable name from. Visiting it here
+    // both evaluates the initializer and adds the loop variable to scope.
     AST_T* init_result = Visitor_Visit(visitor, node->for_variable);
     if (init_result->type != AST_VARIABLE_DEFINITION) {
         printf("Tripped on for loop, loop variable must be a 'var' definition\n");
@@ -173,6 +178,9 @@ AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
         }
     };
 
+    // Rebind the loop variable in scope — same trick 'var i = i + 1;' relies
+    // on manually in a while-loop — rather than mutating a detached AST node
+    // that nothing else reads.
     void set_loop_var(float value) {
         AST_T* vdef = Init_AST(AST_VARIABLE_DEFINITION);
         vdef->variable_definition_variable_name = loop_var_name;
@@ -300,10 +308,98 @@ AST_T* VV_Arrow(Visitor_T* visitor, AST_T* node) {
 
     return Init_AST(AST_NOOP);
 };
+AST_T* VV_Class_Instantiation(Visitor_T* visitor, AST_T* node) {
+    AST_T* template_def = Scope_Get_Class_Definition(node->scope, node->instance_class_name);
+    if (template_def == (void*)0) {
+        printf("Tripped on class instantiation, undefined class '%s'\n", node->instance_class_name);
+        exit(1);
+    }
+
+    AST_T* instance = Init_AST(AST_CLASS_DEFINITION);
+    instance->class_definition_name = node->instance_variable_name;
+    instance->scope = node->scope;
+    instance->class_size = template_def->class_size;
+    instance->init_step = template_def->init_step;
+    instance->init_value = template_def->init_value;
+    instance->init_args = template_def->init_args;
+    instance->init_args_size = template_def->init_args_size;
+
+    if (instance->class_size > 0) {
+        instance->class_definition_value = calloc(instance->class_size, sizeof(struct AST_STRUCT*));
+        instance->class_definition_value_name = calloc(instance->class_size, sizeof(struct AST_STRUCT*));
+        for (size_t i = 0; i < instance->class_size; i++) {
+            instance->class_definition_value[i] = template_def->class_definition_value[i];
+            instance->class_definition_value_name[i] = template_def->class_definition_value_name[i];
+        }
+    }
+
+    Scope_Add_Class_Definition(node->scope, instance);
+    return instance;
+};
 AST_T* VV_Return(Visitor_T* visitor, AST_T* node) {
     AST_T* result = Visitor_Visit(visitor, node->return_value);
     visitor->returning = 1;
     return result;
+};
+AST_T* VV_Assignment(Visitor_T* visitor, AST_T* node) {
+    AST_T* target = node->assignment_target; // raw AST_ARROW: unevaluated so we can reach its left/right
+    AST_T* left = Visitor_Visit(visitor, target->arrow_left);   // the dict/class instance -- same live pointer stored in scope
+    AST_T* key = Visitor_Visit(visitor, target->arrow_right);
+
+    if (key->type != AST_STRING) {
+        printf("Tripped on assignment, key must be a string (got type %d)\n", key->type);
+        exit(1);
+    }
+
+    AST_T* value = Visitor_Visit(visitor, node->assignment_value);
+
+    if (left->type == AST_DICTIONARY_DEFINITION) {
+        for (size_t i = 0; i < left->dictionary_size; i++) {
+            AST_T* existing_key = Visitor_Visit(visitor, left->dictionary_definition_value_name[i]);
+            if (existing_key->type == AST_STRING && strcmp(existing_key->string_value, key->string_value) == 0) {
+                left->dictionary_definition_value[i] = value;
+                return value;
+            }
+        }
+        // key not found -- append a new field
+        left->dictionary_size += 1;
+        left->dictionary_definition_value_name = realloc(
+            left->dictionary_definition_value_name,
+            left->dictionary_size * sizeof(struct AST_STRUCT*)
+        );
+        left->dictionary_definition_value = realloc(
+            left->dictionary_definition_value,
+            left->dictionary_size * sizeof(struct AST_STRUCT*)
+        );
+        left->dictionary_definition_value_name[left->dictionary_size - 1] = key;
+        left->dictionary_definition_value[left->dictionary_size - 1] = value;
+        return value;
+    } else if (left->type == AST_CLASS_DEFINITION) {
+        for (size_t i = 0; i < left->class_size; i++) {
+            AST_T* existing_key = Visitor_Visit(visitor, left->class_definition_value_name[i]);
+            if (existing_key->type == AST_STRING && strcmp(existing_key->string_value, key->string_value) == 0) {
+                left->class_definition_value[i] = value;
+                return value;
+            }
+        }
+        left->class_size += 1;
+        left->class_definition_value_name = realloc(
+            left->class_definition_value_name,
+            left->class_size * sizeof(struct AST_STRUCT*)
+        );
+        left->class_definition_value = realloc(
+            left->class_definition_value,
+            left->class_size * sizeof(struct AST_STRUCT*)
+        );
+        left->class_definition_value_name[left->class_size - 1] = key;
+        left->class_definition_value[left->class_size - 1] = value;
+        return value;
+    } else {
+        printf("Tripped on assignment, invalid target type (%d) -- expected a dict or class instance\n", left->type);
+        exit(1);
+    }
+
+    return Init_AST(AST_NOOP);
 };
 
 AST_T* VV_Function_Definition(Visitor_T* visitor, AST_T* node) {

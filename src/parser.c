@@ -11,6 +11,8 @@
 #include "include/parser.h"
 #include "include/scope.h"
 
+extern char* read_file_to_string(const char *filename); // defined in main.c
+
 static Scope_T* Get_Node_Scope(Parser_T* Parser, AST_T* Node) {
     return Node->scope == (void*)0 ? Parser->Scope : Node->scope;
 }
@@ -27,6 +29,8 @@ Parser_T* Init_Parser(Lexer_T* Lexer){
     parser->dict_names_size = 0;
     parser->class_names = (void*)0;
     parser->class_names_size = 0;
+    parser->included_paths = (void*)0;
+    parser->included_paths_size = 0;
     return parser;
 };
 
@@ -70,7 +74,27 @@ AST_T* Parser_Parse(Parser_T* Parser, Scope_T* Scope){ // main entry, return AST
 };
 AST_T* Parser_Parse_Statement(Parser_T* Parser, Scope_T* Scope){
     switch (Parser->current_token->type){
-        case TOKEN_ID: return Parser_Parse_Id(Parser, Scope);
+        case TOKEN_ID: {
+            AST_T* expr = Parser_Parse_Expr(Parser, Scope);
+
+            if (Parser->current_token->type == TOKEN_EQUALS) {
+                if (expr->type != AST_ARROW) {
+                    printf("Tripped on assignment, left-hand side must be a member access (obj > \"key\")\n");
+                    exit(1);
+                }
+
+                Parser_Eat(Parser, TOKEN_EQUALS);
+                AST_T* value = Parser_Parse_Expr(Parser, Scope);
+
+                AST_T* assignment = Init_AST(AST_ASSIGNMENT);
+                assignment->assignment_target = expr;
+                assignment->assignment_value = value;
+                assignment->scope = Scope;
+                return assignment;
+            }
+
+            return expr;
+        }
     };
     return Init_AST(AST_NOOP);
 };
@@ -104,6 +128,8 @@ AST_T* Parser_Parse_Statements(Parser_T* Parser, Scope_T* Scope){
     return compound;
 };
 
+// Precedence, loosest to tightest: +/- (Expr) > * // (Term) > member access '>' (bound inside Term,
+// tighter than *,/) > atoms (Factor). Arrow parsing lives only in Term, not duplicated in Expr.
 AST_T* Parser_Parse_Expr(Parser_T* Parser, Scope_T* Scope){
     AST_T* node = Parser_Parse_Term(Parser, Scope);
 
@@ -135,6 +161,10 @@ AST_T* Parser_Parse_Factor(Parser_T* Parser, Scope_T* Scope){
         case TOKEN_NUMBER: return Parser_Parse_Number(Parser, Scope); break;
         case TOKEN_ID: return Parser_Parse_Id(Parser, Scope); break;
         default:
+            // NOTE: TOKEN_ARROW is deliberately not a case here. A factor can never legally
+            // *start* with '>' (there's nothing on the left yet) � routing it back into
+            // Parser_Parse_Expr without consuming the token would recurse forever on
+            // malformed input. Fall through to the error path instead.
             printf("Tripped on factor, unexpected token type %d\n", Parser->current_token->type);
             exit(1);
             break;
@@ -420,6 +450,26 @@ AST_T* Parser_Parse_Class(Parser_T* Parser, Scope_T* Scope){
         return Parser_Parse_Function_Call(Parser, Scope);
     }
 
+    if (Parser->current_token->type == TOKEN_ID) {
+        // ClassName instance_name; -- declare a new independent instance of this class
+        char* instance_name = Parser->current_token->value;
+        Parser_Eat(Parser, TOKEN_ID);
+
+        AST_T* ast_instantiation = Init_AST(AST_CLASS_INSTANTIATION);
+        ast_instantiation->instance_class_name = token_value;
+        ast_instantiation->instance_variable_name = instance_name;
+        ast_instantiation->scope = Scope;
+
+        Parser->class_names_size += 1;
+        Parser->class_names = realloc(
+            Parser->class_names,
+            Parser->class_names_size * sizeof(char*)
+        );
+        Parser->class_names[Parser->class_names_size - 1] = instance_name;
+
+        return ast_instantiation;
+    }
+
     AST_T* ast_class = Init_AST(AST_CLASS);
     ast_class->class_name = token_value;
     ast_class->type = AST_CLASS;
@@ -577,6 +627,52 @@ AST_T* Parser_Parse_Return(Parser_T* Parser, Scope_T* Scope) {
     return ast;
 };
 
+AST_T* Parser_Parse_Include(Parser_T* Parser, Scope_T* Scope) {
+    Parser_Eat(Parser, TOKEN_ID); // include
+    AST_T* path_node = Parser_Parse_String(Parser, Scope);
+    char* path = path_node->string_value;
+
+    for (size_t i = 0; i < Parser->included_paths_size; i++) {
+        if (strcmp(Parser->included_paths[i], path) == 0) {
+            return Init_AST(AST_NOOP); // already included -- skip (handles duplicates and circular includes)
+        }
+    }
+    Parser->included_paths_size += 1;
+    Parser->included_paths = realloc(
+        Parser->included_paths,
+        Parser->included_paths_size * sizeof(char*)
+    );
+    Parser->included_paths[Parser->included_paths_size - 1] = path;
+
+    char* contents = read_file_to_string(path);
+    if (contents == (void*)0) {
+        printf("Tripped on include, could not read file '%s'\n", path);
+        exit(1);
+    }
+
+    Lexer_T* saved_lexer = Parser->lexer;
+    Token_T* saved_current = Parser->current_token;
+    Token_T* saved_previous = Parser->previous_token;
+
+    Lexer_T* include_lexer = Init_Lexer(contents);
+    Parser->lexer = include_lexer;
+    Parser->current_token = Lexer_Get_Next_Token(include_lexer);
+    Parser->previous_token = Parser->current_token;
+
+    AST_T* included_statements = Parser_Parse_Statements(Parser, Scope);
+
+    if (Parser->current_token->type != TOKEN_EOF) {
+        printf("Tripped on include, unexpected trailing token in included file '%s'\n", path);
+        exit(1);
+    }
+
+    Parser->lexer = saved_lexer;
+    Parser->current_token = saved_current;
+    Parser->previous_token = saved_previous;
+
+    return included_statements;
+};
+
 AST_T* Parser_Parse_String(Parser_T* Parser, Scope_T* Scope){
     AST_T* ast_string = Init_AST(AST_STRING);
     ast_string->string_value = Parser->current_token->value;
@@ -619,6 +715,8 @@ AST_T* Parser_Parse_Id(Parser_T* Parser, Scope_T* Scope){
         return Parser_Parse_If_Else(Parser, Scope);
     } else if (strcmp(Parser->current_token->value, "return") == 0) {
         return Parser_Parse_Return(Parser, Scope);
+    } else if (strcmp(Parser->current_token->value, "include") == 0) {
+        return Parser_Parse_Include(Parser, Scope);
     } else if (Parser_Is_Known_Table(Parser, Parser->current_token->value)) {
         return Parser_Parse_Table(Parser, Scope);
     } else if (Parser_Is_Known_Dict(Parser, Parser->current_token->value)) {

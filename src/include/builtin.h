@@ -53,14 +53,14 @@ AST_T* builtin_function_print(Visitor_T* visitor, AST_T** args, int args_size){
                 break;
             };
             case AST_BOOL: printf(" %s", visited_ast->bool_value ? "true" : "false"); break;
-            case AST_NUMBER : printf("%i ", visited_ast->number_value); break;
+            case AST_NUMBER : printf("%f ", visited_ast->number_value); break;
             case AST_TABLE_DEFINITION : {
                 printf("[");
                 for (size_t j = 0; j < visited_ast->table_size; j++) {
                     AST_T* elem = Visitor_Visit(visitor, visited_ast->table_definition_value[j]);
                     switch (elem->type) {
                         case AST_STRING : printf(" %s", elem->string_value); break;
-                        case AST_NUMBER : printf(" %i", elem->number_value); break;
+                        case AST_NUMBER : printf(" %f", elem->number_value); break;
                         case AST_BOOL: printf(" %s", elem->bool_value ? "true" : "false"); break;
                         case AST_TABLE_DEFINITION : printf(" "); AST_T** new_args = calloc(1, sizeof(struct AST_STRUCT*)); new_args[0] = elem; builtin_function_print(visitor, new_args, 1); break;
                         default : printf(" %p", elem); break;

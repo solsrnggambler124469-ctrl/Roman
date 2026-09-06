@@ -1,0 +1,10 @@
+include "vectors.roman";
+
+Vector3 player_pos;
+print(player_pos > "x");
+
+player_pos > "x" = 4;
+player_pos > "y" = 10;
+player_pos > "z" = 4;
+
+print(player_pos > "x", player_pos > "y", player_pos > "z");

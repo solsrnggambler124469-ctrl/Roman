@@ -73,6 +73,11 @@ int main(int argc, char *argv[]) {
 
     // Executable runs with " Roman.exe "C:\C_APPS\Roman\src\examples\main.roman" "
 
+    if (argc < 2) {
+        printf("You did not input a path.\n");
+        exit(1);
+    };
+
     if (argv[1] != NULL) {
         if (!ends_with(argv[1], ".roman")) {
             printf("Invalid file type, try a '.roman' file extension.\n");
@@ -95,7 +100,7 @@ int main(int argc, char *argv[]) {
         } else {
             printf("FILE IS NULL.\n");
         }
-    return 0;
+        return 0;
     } else {
         printf("Invalid arguments, argument 1 is NULL or not a valid path.\n");
         exit(100);

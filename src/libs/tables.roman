@@ -1,0 +1,5 @@
+func ForEach(table, size){
+    for (var i = 0: ifcomp(i, size, 4): "++"){
+        var x = table_get_index(table, i);
+    };
+};
