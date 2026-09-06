@@ -1,0 +1,22 @@
+var Ada = 1;
+var Engineer = 2;
+
+dict person = ["name": Ada, "role": Engineer];
+print(person > "name", "works as a ", person > "role");
+
+class Vector3 {
+    "x" : 3,
+    "y" : 4
+};
+
+func Vector3Add(vec1, vec2) {
+    var x = vec1 > "x" + vec2 > "x";
+    var y = vec1 > "y" + vec2 > "y";
+    class Vector3_res {
+        "x" : x,
+        "y" : y
+    };
+    return Vector3_res;
+};
+
+print(Vector3Add(Vector3, Vector3) > "x", Vector3Add(Vector3, Vector3) > "y");
