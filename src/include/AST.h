@@ -27,12 +27,13 @@ typedef enum {
     AST_COMPOUND,
     AST_ASSIGNMENT,
     AST_CLASS_INSTANTIATION,
+    AST_INIT_CALL,
     AST_NOOP
-} ASTType;
+} AST_Type;
 
 typedef struct AST_STRUCT {
 
-    ASTType type;
+    AST_Type type;
     struct SCOPE_STRUCT* scope;
 
     char* variable_definition_variable_name;
@@ -74,6 +75,8 @@ typedef struct AST_STRUCT {
 
     char* instance_class_name;
     char* instance_variable_name;
+
+    struct AST_STRUCT* init_call_instance;
 
     struct AST_STRUCT* return_value;
 

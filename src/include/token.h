@@ -5,6 +5,7 @@ typedef enum {
     TOKEN_EQUALS,
     TOKEN_STRING,
     TOKEN_SEMI,
+    TOKEN_HASH, // For comments
     TOKEN_LPAREN,
     TOKEN_RPAREN,
     TOKEN_LCURLY,

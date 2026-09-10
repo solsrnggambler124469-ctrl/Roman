@@ -1,10 +1,29 @@
 include "vectors.roman";
+include "strings.roman";
 
-Vector3 player_pos;
-print(player_pos > "x");
+Vector3 bleh;
 
-player_pos > "x" = 4;
-player_pos > "y" = 10;
-player_pos > "z" = 4;
+class Player {
+    "shared_pos" : bleh,
+    "pos" : 0,
+    "name" : "",
+    "clientid" : 1,
+    "init" : func(self){
+        Vector3 temp;
+        self > "pos" = temp;
+        print("self is auto bound! no need to pass an argument!");
+    }
+};
 
-print(player_pos > "x", player_pos > "y", player_pos > "z");
+Player MikeWow123;
+Player Nig3r;
+
+MikeWow123 > init();
+Nig3r > init();
+
+Nig3r > "pos" > "x" = 1;
+
+print("here");
+print(Nig3r > "pos" > "x", "%n");
+
+print(MikeWow123 > "pos" > "x", "%n");

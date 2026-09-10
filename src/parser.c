@@ -161,23 +161,48 @@ AST_T* Parser_Parse_Factor(Parser_T* Parser, Scope_T* Scope){
         case TOKEN_NUMBER: return Parser_Parse_Number(Parser, Scope); break;
         case TOKEN_ID: return Parser_Parse_Id(Parser, Scope); break;
         default:
-            // NOTE: TOKEN_ARROW is deliberately not a case here. A factor can never legally
-            // *start* with '>' (there's nothing on the left yet) � routing it back into
-            // Parser_Parse_Expr without consuming the token would recurse forever on
-            // malformed input. Fall through to the error path instead.
             printf("Tripped on factor, unexpected token type %d\n", Parser->current_token->type);
             exit(1);
             break;
     };
     return Init_AST(AST_NOOP);
 };
-AST_T* Parser_Parse_Term(Parser_T* Parser, Scope_T* Scope){
+static AST_T* Parser_Parse_Arrow_Chain(Parser_T* Parser, Scope_T* Scope) {
     AST_T* node = Parser_Parse_Factor(Parser, Scope);
 
     while (Parser->current_token->type == TOKEN_ARROW) {
-        int op = Parser->current_token->type;
-        Parser_Eat(Parser, op);
+        Parser_Eat(Parser, TOKEN_ARROW);
 
+        if (Parser->current_token->type == TOKEN_ID && strcmp(Parser->current_token->value, "init") == 0) {
+            Parser_Eat(Parser, TOKEN_ID);
+            Parser_Eat(Parser, TOKEN_LPAREN);
+
+            AST_T* call = Init_AST(AST_INIT_CALL);
+            call->init_call_instance = node;
+            call->scope = Scope;
+
+            if (Parser->current_token->type != TOKEN_RPAREN) {
+                AST_T* arg = Parser_Parse_Expr(Parser, Scope);
+                call->function_call_arguments = calloc(1, sizeof(struct AST_STRUCT*));
+                call->function_call_arguments[0] = arg;
+                call->function_call_arguments_size = 1;
+
+                while (Parser->current_token->type == TOKEN_COMMA) {
+                    Parser_Eat(Parser, TOKEN_COMMA);
+                    AST_T* arg2 = Parser_Parse_Expr(Parser, Scope);
+                    call->function_call_arguments_size += 1;
+                    call->function_call_arguments = realloc(
+                        call->function_call_arguments,
+                        call->function_call_arguments_size * sizeof(struct AST_STRUCT*)
+                    );
+                    call->function_call_arguments[call->function_call_arguments_size - 1] = arg2;
+                };
+            }
+
+            Parser_Eat(Parser, TOKEN_RPAREN);
+            node = call;
+            continue;
+        }
         AST_T* right = Parser_Parse_String(Parser, Scope);
 
         AST_T* arrow = Init_AST(AST_ARROW);
@@ -187,11 +212,17 @@ AST_T* Parser_Parse_Term(Parser_T* Parser, Scope_T* Scope){
 
         node = arrow;
     };
+
+    return node;
+};
+AST_T* Parser_Parse_Term(Parser_T* Parser, Scope_T* Scope){
+    AST_T* node = Parser_Parse_Arrow_Chain(Parser, Scope);
+
     while (Parser->current_token->type == TOKEN_MULTIPLY || Parser->current_token->type == TOKEN_DIVIDE) {
         int op = Parser->current_token->type;
         Parser_Eat(Parser, op);
 
-        AST_T* right = Parser_Parse_Factor(Parser, Scope);
+        AST_T* right = Parser_Parse_Arrow_Chain(Parser, Scope);
 
         AST_T* binop = Init_AST(AST_BINOP);
         binop->binop_left = node;
@@ -349,10 +380,6 @@ AST_T* Parser_Parse_Dictionary(Parser_T* Parser, Scope_T* Scope){
     return ast_dict;
 };
 
-// Parses `init: func(a, b) { ... }` inside a class body. Mirrors
-// Parser_Parse_Function_Definition's arg-list pattern (parse first arg
-// unconditionally, then comma-loop for the rest) rather than assuming
-// a leading comma, which was the earlier bug.
 static void Parser_Parse_Class_Init(Parser_T* Parser, Scope_T* Scope, AST_T* class_def) {
     Parser_Eat(Parser, TOKEN_STRING); // consume the 'init' key itself
     Parser_Eat(Parser, TOKEN_COLON);

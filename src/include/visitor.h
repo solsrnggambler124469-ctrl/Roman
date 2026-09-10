@@ -37,6 +37,7 @@ AST_T* VV_Arrow(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Return(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Assignment(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Class_Instantiation(Visitor_T* visitor, AST_T* node);
+AST_T* VV_Init_Call(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Function_Definition(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Function_Call(Visitor_T* visitor, AST_T* node);
 AST_T* VV_Table_Definition(Visitor_T* visitor, AST_T* node);

@@ -54,6 +54,24 @@ AST_T* builtin_function_print(Visitor_T* visitor, AST_T** args, int args_size){
             };
             case AST_BOOL: printf(" %s", visited_ast->bool_value ? "true" : "false"); break;
             case AST_NUMBER : printf("%f ", visited_ast->number_value); break;
+            case AST_CLASS : printf("%f ", visited_ast->class_name); break;
+            case AST_CLASS_INSTANTIATION :
+                printf("{");
+                AST_T* class_def = Scope_Get_Class_Definition(visited_ast->scope, visited_ast->instance_class_name);
+                for (size_t j = 0; j < class_def->class_size; j++) {
+                    AST_T* elem = Visitor_Visit(visitor, class_def->class_definition_value[j]);
+                    switch (elem->type) {
+                        case AST_STRING : printf(" %s", elem->string_value); break;
+                        case AST_NUMBER : printf(" %f", elem->number_value); break;
+                        case AST_BOOL: printf(" %s", elem->bool_value ? "true" : "false"); break;
+                        case AST_TABLE_DEFINITION : printf(" "); AST_T** new_args = calloc(1, sizeof(struct AST_STRUCT*)); new_args[0] = elem; builtin_function_print(visitor, new_args, 1); break;
+                        default : printf(" %p", elem); break;
+                    }
+                    if (j < (visited_ast->table_size-1)){
+                        printf(",");
+                    };
+                }
+                printf("}");
             case AST_TABLE_DEFINITION : {
                 printf("[");
                 for (size_t j = 0; j < visited_ast->table_size; j++) {
@@ -168,6 +186,107 @@ AST_T* builtin_function_table_get_index(Visitor_T* visitor, AST_T** args, int ar
         default: printf("Tripped on function 'table_get_index', unsupported type %d\n", elem->type); exit(1);
     };
 
+    return Init_AST(AST_NOOP);
+};
+
+AST_T* builtin_function_table_set_index(Visitor_T* visitor, AST_T** args, int args_size){
+    if (args_size > 3) {
+        printf("Tripped on function 'table_set_index', argument overflow. (%d to 3)\n", args_size);
+        exit(1);
+    } else if (args_size < 3) {
+        printf("Tripped on function 'table_set_index', argument underflow. (3 to %d)\n", args_size);
+        exit(1);
+    }
+
+    AST_T* table = Visitor_Visit(visitor, args[0]);
+    AST_T* index = Visitor_Visit(visitor, args[1]);
+    AST_T* value = Visitor_Visit(visitor, args[2]);
+
+    if (index== NULL || index->type != AST_NUMBER) {
+        printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
+        exit(1);
+    }
+    if (value == NULL || value->type == AST_NOOP) {
+        printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
+        exit(1);
+    }
+    if ((int)index->number_value <= 0){
+        printf("Tripped on function 'table_set_index', index is out of bounds (0)\n");
+        exit(1);
+    };
+    if (table->type != AST_TABLE_DEFINITION) {
+        printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
+        exit(1);
+    }
+    if ((size_t)index->number_value > table->table_size){
+        printf("Tripped on function 'table_set_index', index is out of bounds (1)\n");
+        exit(1);
+    };
+
+    table->table_definition_value[(int)index->number_value - 1] = value;
+
+    return Init_AST(AST_NOOP);
+};
+
+AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size){
+    /* if (args_size > 2) {
+        printf("Tripped on function 'ForEach', argument overflow. (%d to 2)\n", args_size);
+        exit(1);
+    }; */
+    if (args_size < 2) {
+        printf("Tripped on function 'ForEach', argument underflow. (2 to %d)\n", args_size);
+        exit(1);
+    }
+
+    AST_T* table = Visitor_Visit(visitor, args[0]);
+    AST_T* func_name = Visitor_Visit(visitor, args[1]);
+
+    if (table == NULL || table->type != AST_TABLE_DEFINITION) {
+        printf("Tripped on function 'ForEach', type of argument 1 expects a table but did not receive one\n");
+        exit(1);
+    };
+    if (func_name == NULL || func_name->type != AST_STRING) {
+        printf("Tripped on function 'ForEach', type of argument 2 expects a function but did not receive one\n");
+        exit(1);
+    };
+
+    AST_T* node = Init_AST(AST_FUNCTION_CALL);
+    node->scope = func_name->scope;
+    node->function_call_name = func_name->string_value;
+
+    node->function_call_arguments_size = 0;
+
+    for (int in=0;in<table->table_size;in++) {
+        AST_T* fdef = Scope_Get_Function_Definition(node->scope, node->function_call_name);
+
+        if (fdef == (void*)0) {
+            printf("Tripped on undefined method '%s'\n", node->function_call_name);
+            exit(1);
+        }
+        if (node->function_call_arguments_size != fdef->function_definition_args_size) {
+            printf("Tripped on function call '%s', expected %zu args, got %zu\n",
+                   node->function_call_name, fdef->function_definition_args_size, node->function_call_arguments_size);
+            exit(1);
+        }
+        Scope_T* call_scope = fdef->function_definition_body->scope;
+        size_t saved_scope_size = call_scope->variable_definitions_size;
+
+        for (int i=0;i<(int)node->function_call_arguments_size;i++){
+            AST_T* ast_var = (AST_T*) fdef->function_definition_args[i];
+            AST_T* ast_value = (AST_T*) node->function_call_arguments[i];
+            AST_T* evaluated_value = Visitor_Visit(visitor, ast_value);   // evaluate now, using the caller's current bindings
+
+            AST_T* ast_vardef = Init_AST(AST_VARIABLE_DEFINITION);
+            ast_vardef->variable_definition_value = evaluated_value;
+            ast_vardef->variable_definition_variable_name = (char*) calloc(strlen(ast_var->variable_name) + 1, sizeof(char));
+            strcpy(ast_vardef->variable_definition_variable_name, ast_var->variable_name);
+            Scope_Add_Variable_Definition(call_scope, ast_vardef);
+        }
+        AST_T* result = Visitor_Visit(visitor, fdef->function_definition_body);
+        visitor->returning = 0;
+
+        call_scope->variable_definitions_size = saved_scope_size;
+    };
     return Init_AST(AST_NOOP);
 };
 

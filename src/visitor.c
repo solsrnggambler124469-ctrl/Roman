@@ -142,9 +142,6 @@ AST_T* VV_If_Else(Visitor_T* visitor, AST_T* node) {
     return Visitor_Visit(visitor, node->if_else_body);
 };
 AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
-    // node->for_variable must be a 'var name = expr' definition — that's the
-    // only form the grammar produces a usable name from. Visiting it here
-    // both evaluates the initializer and adds the loop variable to scope.
     AST_T* init_result = Visitor_Visit(visitor, node->for_variable);
     if (init_result->type != AST_VARIABLE_DEFINITION) {
         printf("Tripped on for loop, loop variable must be a 'var' definition\n");
@@ -178,9 +175,6 @@ AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
         }
     };
 
-    // Rebind the loop variable in scope — same trick 'var i = i + 1;' relies
-    // on manually in a while-loop — rather than mutating a detached AST node
-    // that nothing else reads.
     void set_loop_var(float value) {
         AST_T* vdef = Init_AST(AST_VARIABLE_DEFINITION);
         vdef->variable_definition_variable_name = loop_var_name;
@@ -198,7 +192,7 @@ AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
     while (condition_true()) {
         last_var = Visitor_Visit(visitor, node->for_body);
         if (visitor->returning) {
-            break; // a 'return' fired inside the loop body -- stop iterating
+            break;
         }
         counter += minus ? -1.0f : 1.0f;
         set_loop_var(counter);
@@ -336,6 +330,65 @@ AST_T* VV_Class_Instantiation(Visitor_T* visitor, AST_T* node) {
     Scope_Add_Class_Definition(node->scope, instance);
     return instance;
 };
+AST_T* VV_Init_Call(Visitor_T* visitor, AST_T* node) {
+    AST_T* instance = Visitor_Visit(visitor, node->init_call_instance);
+
+    if (instance->type != AST_CLASS_DEFINITION) {
+        printf("Tripped on init call, target is not a class instance (type %d)\n", instance->type);
+        exit(1);
+    }
+    if (!instance->init_step || instance->init_value == (void*)0) {
+        printf("Tripped on init call, class '%s' has no 'init' defined\n", instance->class_definition_name);
+        exit(1);
+    }
+    if (instance->init_args_size < 1) {
+        printf("Tripped on init call, 'init' must declare at least a 'self' parameter\n");
+        exit(1);
+    }
+
+    size_t declared_param_count = instance->init_args_size;
+    size_t user_arg_count = (size_t) node->function_call_arguments_size;
+
+    if (user_arg_count != declared_param_count - 1) {
+        printf(
+            "Tripped on init call, expected %zu argument(s) but got %zu\n",
+            declared_param_count - 1,
+            user_arg_count
+        );
+        exit(1);
+    }
+
+    Scope_T* call_scope = instance->scope;
+    size_t saved_scope_size = call_scope->variable_definitions_size;
+
+    // First declared parameter is 'self' by convention -- bind it to the instance itself.
+    AST_T* self_param = instance->init_args[0];
+    AST_T* self_vdef = Init_AST(AST_VARIABLE_DEFINITION);
+    self_vdef->variable_definition_variable_name = self_param->variable_name;
+    self_vdef->variable_definition_value = instance;
+    Scope_Add_Variable_Definition(call_scope, self_vdef);
+
+    // Remaining declared parameters bind to the evaluated call arguments, in order.
+    for (size_t i = 1; i < declared_param_count; i++) {
+        AST_T* param = instance->init_args[i];
+        AST_T* arg_expr = node->function_call_arguments[i - 1];
+        AST_T* evaluated = Visitor_Visit(visitor, arg_expr);
+
+        AST_T* vdef = Init_AST(AST_VARIABLE_DEFINITION);
+        vdef->variable_definition_variable_name = param->variable_name;
+        vdef->variable_definition_value = evaluated;
+        Scope_Add_Variable_Definition(call_scope, vdef);
+    }
+
+    AST_T* result = Visitor_Visit(visitor, instance->init_value);
+    visitor->returning = 0;
+
+    // Same stack-discipline cleanup as ordinary function calls -- pop this call's
+    // bindings (self + params) back off the shared scope.
+    call_scope->variable_definitions_size = saved_scope_size;
+
+    return result;
+};
 AST_T* VV_Return(Visitor_T* visitor, AST_T* node) {
     AST_T* result = Visitor_Visit(visitor, node->return_value);
     visitor->returning = 1;
@@ -413,6 +466,10 @@ AST_T* VV_Function_Call(Visitor_T* visitor, AST_T* node) {
         return builtin_function_type(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "table_get_index") == 0) {
         return builtin_function_table_get_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
+    } else if (strcmp(node->function_call_name, "table_set_index") == 0) {
+        return builtin_function_table_set_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
+    } else if (strcmp(node->function_call_name, "foreach") == 0) {
+        return builtin_function_for_each(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "ifcomp") == 0) {
         return builtin_function_if_comp(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else {

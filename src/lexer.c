@@ -7,27 +7,15 @@
 
 Lexer_T* Init_Lexer(const char* contents) {
 
-    Lexer_T* lexer = calloc(
-        1,
-        sizeof(Lexer_T)
-    );
+    Lexer_T* lexer = calloc(1, sizeof(Lexer_T));
 
-    if (!lexer)
-        exit(EXIT_FAILURE);
+    if (!lexer) exit(EXIT_FAILURE);
 
-    lexer->contents = contents
-        ? contents
-        : "";
+    lexer->contents = contents ? contents : "";
 
-    lexer->content_size =
-        strlen(lexer->contents);
-
+    lexer->content_size = strlen(lexer->contents);
     lexer->i = 0;
-
-    lexer->c =
-        lexer->content_size
-            ? lexer->contents[0]
-            : '\0';
+    lexer->c = lexer->content_size ? lexer->contents[0] : '\0';
 
     return lexer;
 }
@@ -36,12 +24,9 @@ void Lexer_Advance(Lexer_T* lexer) {
 
     if(lexer->i < lexer->content_size) {
         lexer->i++;
-    }
+    };
 
-    lexer->c =
-        lexer->i < lexer->content_size
-            ? lexer->contents[lexer->i]
-            : '\0';
+    lexer->c = lexer->i < lexer->content_size ? lexer->contents[lexer->i] : '\0';
 }
 
 void Lexer_Skip_WhiteSpace(Lexer_T* lexer) {
@@ -57,8 +42,7 @@ char* Lexer_Get_Current_Char_As_String(Lexer_T* lexer) {
 
     char* s = malloc(2);
 
-    if (!s)
-        exit(EXIT_FAILURE);
+    if (!s) exit(EXIT_FAILURE);
 
     s[0] = lexer->c;
     s[1] = '\0';
@@ -95,18 +79,14 @@ Token_T* Lexer_Collect_String(Lexer_T* lexer) {
         char ch = lexer->c;
 
         if (ch == '\\') {
-
             Lexer_Advance(lexer);
-
             if(lexer->c == '\0') {
                 free(value);
-
                 fprintf(
                     stderr,
                     "Lexer error: "
                     "unterminated escape sequence\n"
                 );
-
                 exit(EXIT_FAILURE);
             }
 
@@ -135,55 +115,35 @@ Token_T* Lexer_Collect_String(Lexer_T* lexer) {
 
         }
 
-        if (length + 2 >
-            capacity) {
-
+        if (length + 2 > capacity) {
             capacity *= 2;
-
-            char* new_value =
-                realloc(
-                    value,
-                    capacity
-                );
+            char* new_value =realloc(value, capacity);
 
             if (!new_value) {
-
                 free(value);
                 exit(EXIT_FAILURE);
-
             }
-
             value = new_value;
         }
 
         value[length++] = ch;
-
         Lexer_Advance(lexer);
     }
 
     if(lexer->c == '\0') {
-
         free(value);
-
         fprintf(
             stderr,
             "Lexer error: "
             "unterminated string\n"
         );
-
         exit(EXIT_FAILURE);
     }
 
     value[length] = '\0';
-
     Lexer_Advance(lexer);
 
-    Token_T* token =
-        Init_Token(
-            TOKEN_STRING,
-            value
-        );
-
+    Token_T* token = Init_Token(TOKEN_STRING, value);
     free(value);
 
     return token;
@@ -196,69 +156,41 @@ Token_T* Lexer_Collect_Number(Lexer_T* lexer) {
 
     int decimal_found = 0;
 
-    char* value =
-        malloc(capacity);
+    char* value = malloc(capacity);
 
-    if (!value)
-        exit(EXIT_FAILURE);
+    if (!value) exit(EXIT_FAILURE);
 
-    while (isdigit(
-            (unsigned char)lexer->c
-        ) || lexer->c == '.') {
-
+    while (isdigit((unsigned char)lexer->c) || lexer->c == '.') {
         if(lexer->c == '.') {
-
             if(decimal_found) {
-
                 free(value);
-
                 fprintf(
                     stderr,
                     "Lexer error: "
                     "invalid number\n"
                 );
-
                 exit(EXIT_FAILURE);
             }
-
             decimal_found = 1;
         }
-
-        if (length + 2 >
-            capacity) {
-
+        if (length + 2 > capacity) {
             capacity *= 2;
-
-            char* new_value =
-                realloc(
-                    value,
-                    capacity
-                );
+            char* new_value =realloc(value, capacity);
 
             if (!new_value) {
-
                 free(value);
                 exit(EXIT_FAILURE);
-
-            }
-
+            };
             value = new_value;
         }
 
-        value[length++] =
-            lexer->c;
-
+        value[length++] = lexer->c;
         Lexer_Advance(lexer);
     }
 
     value[length] = '\0';
 
-    Token_T* token =
-        Init_Token(
-            TOKEN_NUMBER,
-            value
-        );
-
+    Token_T* token = Init_Token(TOKEN_NUMBER, value);
     free(value);
 
     return token;
@@ -269,51 +201,29 @@ Token_T* Lexer_Collect_Id(Lexer_T* lexer) {
     size_t capacity = 32;
     size_t length = 0;
 
-    char* value =
-        malloc(capacity);
+    char* value = malloc(capacity);
 
-    if (!value)
-        exit(EXIT_FAILURE);
+    if (!value) exit(EXIT_FAILURE);
 
-    while (isalnum(
-            (unsigned char)lexer->c
-        ) || lexer->c == '_') {
-
-        if (length + 2 >
-            capacity) {
-
+    while (isalnum((unsigned char)lexer->c) || lexer->c == '_') {
+        if (length + 2 > capacity) {
             capacity *= 2;
 
-            char* new_value =
-                realloc(
-                    value,
-                    capacity
-                );
+            char* new_value = realloc(value,capacity);
 
             if (!new_value) {
-
                 free(value);
                 exit(EXIT_FAILURE);
-
             }
-
             value = new_value;
         }
-
-        value[length++] =
-            lexer->c;
-
+        value[length++] = lexer->c;
         Lexer_Advance(lexer);
     }
 
     value[length] = '\0';
 
-    Token_T* token =
-        Init_Token(
-            TOKEN_ID,
-            value
-        );
-
+    Token_T* token = Init_Token(TOKEN_ID, value);
     free(value);
 
     return token;
@@ -339,6 +249,20 @@ Token_T* Lexer_Get_Next_Token(Lexer_T* lexer) {
         if (lexer->c == '"') {
             return Lexer_Collect_String(lexer);
         }
+
+        if (lexer->c == '#') {
+            Lexer_Advance(lexer);
+            while (lexer->c != '#') {
+                Lexer_Advance(lexer);
+            };
+            if (lexer->c == '#') {
+                Lexer_Advance(lexer);
+            } else {
+                printf("HAHAHAH\n");
+                printf("Lexer Error: expected hashtag at position %zu\n", lexer->i);
+                exit(1);
+            };
+        };
 
         switch (lexer->c) {
 
@@ -495,17 +419,22 @@ Token_T* Lexer_Get_Next_Token(Lexer_T* lexer) {
                     )
                 );
 
-            default:
+            case '#' :
+                return Lexer_Advance_With_Token(
+                    lexer,
+                    Init_Token(
+                        TOKEN_HASH,
+                        "#"
+                    )
+                );
 
+            default:
                 fprintf(
                     stderr,
-                    "Lexer error: "
-                    "unexpected character '%c' "
-                    "at position %zu\n",
+                    "Lexer error: unexpected character '%c' at position %zu\n",
                     lexer->c,
                     lexer->i
                 );
-
                 exit(EXIT_FAILURE);
         }
     }
