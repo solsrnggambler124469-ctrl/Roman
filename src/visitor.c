@@ -468,7 +468,7 @@ AST_T* VV_Function_Call(Visitor_T* visitor, AST_T* node) {
         return builtin_function_table_get_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "table_set_index") == 0) {
         return builtin_function_table_set_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
-    } else if (strcmp(node->function_call_name, "foreach") == 0) {
+    } else if (strcmp(node->function_call_name, "ForEach") == 0) {
         return builtin_function_for_each(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "ifcomp") == 0) {
         return builtin_function_if_comp(visitor, node->function_call_arguments, node->function_call_arguments_size);

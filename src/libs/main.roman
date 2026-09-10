@@ -12,7 +12,7 @@ class Player {
         Vector3 temp;
         self > "pos" = temp;
         print("self is auto bound! no need to pass an argument!");
-    }
+    };
 };
 
 Player MikeWow123;
