@@ -78,8 +78,8 @@ AST_T* Parser_Parse_Statement(Parser_T* Parser, Scope_T* Scope){
             AST_T* expr = Parser_Parse_Expr(Parser, Scope);
 
             if (Parser->current_token->type == TOKEN_EQUALS) {
-                if (expr->type != AST_ARROW) {
-                    printf("Tripped on assignment, left-hand side must be a member access (obj > \"key\")\n");
+                if (expr->type != AST_ARROW && expr->type != AST_VARIABLE) {
+                    printf("Tripped on assignment, left-hand side must be a member access (obj > \"key\") or a variable\n");
                     exit(1);
                 }
 

@@ -5,7 +5,7 @@ class String {
 var times = 0;
 
 func forfunc(){
-    var times = times + 1;
+    times = times + 1;
 };
 
 func strcat(string1, string2) {
@@ -18,7 +18,7 @@ func strlen(string_table) {
 };
 
 var base = "I'm the ";
-var base = strcat(base, "alpha");
+base = strcat(base, "alpha");
 
 table roman = ["r", "o", "m", "a", "n"];
 

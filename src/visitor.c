@@ -396,6 +396,20 @@ AST_T* VV_Return(Visitor_T* visitor, AST_T* node) {
 };
 AST_T* VV_Assignment(Visitor_T* visitor, AST_T* node) {
     AST_T* target = node->assignment_target; // raw AST_ARROW: unevaluated so we can reach its left/right
+
+    if (target->type == AST_VARIABLE) {
+        AST_T* value = Visitor_Visit(visitor, node->assignment_target);
+        AST_T* variable = Scope_Get_Variable_Definition(target->scope, target->variable_name);
+
+        if (variable == NULL){
+            printf("Tripped on assignment, unknown variable '%s'\n", target->variable_name);
+            exit(1);
+        };
+
+        variable->variable_definition_value = value;
+        return value;
+    };
+
     AST_T* left = Visitor_Visit(visitor, target->arrow_left);   // the dict/class instance -- same live pointer stored in scope
     AST_T* key = Visitor_Visit(visitor, target->arrow_right);
 
