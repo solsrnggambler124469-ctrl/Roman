@@ -252,16 +252,16 @@ Token_T* Lexer_Get_Next_Token(Lexer_T* lexer) {
 
         if (lexer->c == '#') {
             Lexer_Advance(lexer);
-            while (lexer->c != '#') {
+            while (lexer->c != '#' && lexer->c != '\0') {
                 Lexer_Advance(lexer);
             };
             if (lexer->c == '#') {
                 Lexer_Advance(lexer);
             } else {
-                printf("HAHAHAH\n");
-                printf("Lexer Error: expected hashtag at position %zu\n", lexer->i);
-                exit(1);
+                fprintf(stderr, "Lexer Error: unterminated comment at position %zu\n", lexer->i);
+                exit(EXIT_FAILURE);
             };
+            continue;
         };
 
         switch (lexer->c) {

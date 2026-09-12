@@ -55,8 +55,8 @@ int main(int argc, char *argv[]) {
     };
 
     if (argv[1] != NULL) {
-        if (!ends_with(argv[1], ".roman")) {
-            printf("Invalid file type, try a '.roman' file extension.\n");
+        if (!ends_with(argv[1], ".iris")) {
+            printf("Invalid file type, try a '.iris' file extension.\n");
             exit(101);
             return 1;
         }

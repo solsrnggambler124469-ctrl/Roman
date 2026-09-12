@@ -127,6 +127,31 @@ AST_T* builtin_function_type(Visitor_T* visitor, AST_T** args, int args_size){
             newvar->string_value = "NUMBER";
             return newvar;
             break;
+        case AST_TABLE:
+            newvar->type = AST_STRING;
+            newvar->string_value = "TABLE";
+            return newvar;
+            break;
+        case AST_TABLE_DEFINITION:
+            newvar->type = AST_STRING;
+            newvar->string_value = "TABLE";
+            return newvar;
+            break;
+        case AST_CLASS:
+            newvar->type = AST_STRING;
+            newvar->string_value = "CLASS";
+            return newvar;
+            break;
+        case AST_CLASS_DEFINITION:
+            newvar->type = AST_STRING;
+            newvar->string_value = "CLASS";
+            return newvar;
+            break;
+        case AST_CLASS_INSTANTIATION:
+            newvar->type = AST_STRING;
+            newvar->string_value = var->instance_class_name;
+            return newvar;
+            break;
         case AST_BOOL:
             newvar->type = AST_STRING;
             newvar->string_value = "BOOL";
@@ -202,25 +227,29 @@ AST_T* builtin_function_table_set_index(Visitor_T* visitor, AST_T** args, int ar
     AST_T* index = Visitor_Visit(visitor, args[1]);
     AST_T* value = Visitor_Visit(visitor, args[2]);
 
-    if (index== NULL || index->type != AST_NUMBER) {
+    if (table == NULL || table->type != AST_TABLE_DEFINITION) {
         printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
+        exit(1);
+    };
+    if (index== NULL || index->type != AST_NUMBER) {
+        printf("Tripped on function 'table_set_index', type of argument 2 expects a number but did not receive one\n");
         exit(1);
     }
     if (value == NULL || value->type == AST_NOOP) {
-        printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
+        printf("Tripped on function 'table_set_index', type of argument 3 expects any value but did not receive one\n");
         exit(1);
     }
     if ((int)index->number_value <= 0){
         printf("Tripped on function 'table_set_index', index is out of bounds (0)\n");
         exit(1);
     };
-    if (table->type != AST_TABLE_DEFINITION) {
-        printf("Tripped on function 'table_set_index', type of argument 1 expects a table but did not receive one\n");
-        exit(1);
-    }
     if ((size_t)index->number_value > table->table_size){
-        printf("Tripped on function 'table_set_index', index is out of bounds (1)\n");
-        exit(1);
+        size_t new_size = (size_t)index->number_value;
+        table->table_definition_value = realloc(
+            table->table_definition_value,
+            new_size * sizeof(struct AST_STRUCT*)
+        );
+        table->table_size = new_size;
     };
 
     table->table_definition_value[(int)index->number_value - 1] = value;
@@ -228,21 +257,110 @@ AST_T* builtin_function_table_set_index(Visitor_T* visitor, AST_T** args, int ar
     return Init_AST(AST_NOOP);
 };
 
-AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size){
-    /* if (args_size > 2) {
-        printf("Tripped on function 'ForEach', argument overflow. (%d to 2)\n", args_size);
+AST_T* builtin_function_char_at(Visitor_T* visitor, AST_T** args, int args_size){
+    if (args_size > 2) {
+        printf("Tripped on function 'charAt', argument overflow. (%d to 2)\n", args_size);
         exit(1);
-    }; */
+    } else if (args_size < 2) {
+        printf("Tripped on function 'charAt', argument underflow. (2 to %d)\n", args_size);
+        exit(1);
+    }
+
+    AST_T* stringg = Visitor_Visit(visitor, args[0]);
+    AST_T* index = Visitor_Visit(visitor, args[1]);
+
+    if (index->type != AST_NUMBER) {
+        printf("Tripped on function 'charAt', type of argument 2 expects a number but did not receive one\n");
+        exit(1);
+    }
+    if (stringg->type != AST_STRING) {
+        printf("Tripped on function 'charAt', type of argument 1 expects a string but did not receive one\n");
+        exit(1);
+    }
+
+    AST_T* ast_var = Init_AST(AST_STRING);
+    ast_var->scope = stringg->scope;
+    ast_var->string_value = malloc(2);
+
+    if (!ast_var->string_value) exit(EXIT_FAILURE);
+
+    if ((int)index->number_value <= 0){
+        printf("Failed on function 'charAt', index is out of bounds (0)\n");
+        ast_var->string_value[0] = 'N';
+        ast_var->string_value[1] = 'U';
+        ast_var->string_value[2] = 'L';
+        ast_var->string_value[3] = 'L';
+        return ast_var;
+    };
+    if ((size_t)index->number_value > strlen(stringg->string_value)){
+        printf("Failed on function 'charAt', index is out of bounds (1)\n");
+        ast_var->string_value[0] = 'N';
+        ast_var->string_value[1] = 'U';
+        ast_var->string_value[2] = 'L';
+        ast_var->string_value[3] = 'L'; // i have such a low sanity.
+        return ast_var;
+    };
+    char c = stringg->string_value[(int)index->number_value-1];
+
+    ast_var->string_value[0] = c;
+    ast_var->string_value[1] = '\0';
+
+    return ast_var;
+};
+
+AST_T* builtin_function_str_edit(Visitor_T* visitor, AST_T** args, int args_size){
+    if (args_size > 3) {
+        printf("Tripped on function 'str_edit', argument overflow. (%d to 3)\n", args_size);
+        exit(1);
+    } else if (args_size < 3) {
+        printf("Tripped on function 'stredit', argument underflow. (3 to %d)\n", args_size);
+        exit(1);
+    }
+
+    AST_T* str = Visitor_Visit(visitor, args[0]);
+    AST_T* index = Visitor_Visit(visitor, args[1]);
+    AST_T* value = Visitor_Visit(visitor, args[2]);
+
+    if (str == NULL || str->type != AST_STRING) {
+        printf("Tripped on function 'stredit', type of argument 1 expects a string but did not receive one\n");
+        exit(1);
+    }
+    if (index == NULL || index->type == AST_NOOP) {
+        printf("Tripped on function 'stredit', type of argument 2 expects a number but did not receive one\n");
+        exit(1);
+    }
+    if ((int)index->number_value <= 0){
+        printf("Tripped on function 'stredit', index is out of bounds (0)\n");
+        exit(1);
+    };
+    if (value == NULL || value->type != AST_STRING) {
+        printf("Tripped on function 'stredit', type of argument 1 expects a string but did not receive one\n");
+        exit(1);
+    };
+    size_t length = strlen(value->string_value);
+
+    if (length == 1) {
+        char c = value->string_value[0];
+
+        str->string_value[(int)index->number_value-1] = c;
+    } else {
+        printf("Failed on function 'stredit', string value is of a size greater/less than one.");
+    };
+
+    return Init_AST(AST_NOOP);
+};
+
+AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size){
     if (args_size < 2) {
         printf("Tripped on function 'ForEach', argument underflow. (2 to %d)\n", args_size);
         exit(1);
     }
 
-    AST_T* table = Visitor_Visit(visitor, args[0]);
+    AST_T* str = Visitor_Visit(visitor, args[0]);
     AST_T* func_name = Visitor_Visit(visitor, args[1]);
 
-    if (table == NULL || table->type != AST_TABLE_DEFINITION) {
-        printf("Tripped on function 'ForEach', type of argument 1 expects a table but did not receive one\n");
+    if (str == NULL || str->type != AST_STRING) {
+        printf("Tripped on function 'ForEach', type of argument 1 expects a string but did not receive one\n");
         exit(1);
     };
     if (func_name == NULL || func_name->type != AST_STRING) {
@@ -256,7 +374,11 @@ AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size
 
     node->function_call_arguments_size = 0;
 
-    for (int in=0;in<table->table_size;in++) {
+    size_t siz = 0;
+
+    siz = strlen(str->string_value);
+
+    for (int in=0;in<siz;in++) {
         AST_T* fdef = Scope_Get_Function_Definition(node->scope, node->function_call_name);
 
         if (fdef == (void*)0) {
@@ -271,17 +393,20 @@ AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size
         Scope_T* call_scope = fdef->function_definition_body->scope;
         size_t saved_scope_size = call_scope->variable_definitions_size;
 
+        AST_T** evaluated_args = (AST_T**) calloc(node->function_call_arguments_size, sizeof(struct AST_STRUCT*));
+        for (int i=0;i<(int)node->function_call_arguments_size;i++){
+            evaluated_args[i] = Visitor_Visit(visitor, node->function_call_arguments[i]);
+        }
         for (int i=0;i<(int)node->function_call_arguments_size;i++){
             AST_T* ast_var = (AST_T*) fdef->function_definition_args[i];
-            AST_T* ast_value = (AST_T*) node->function_call_arguments[i];
-            AST_T* evaluated_value = Visitor_Visit(visitor, ast_value);   // evaluate now, using the caller's current bindings
 
             AST_T* ast_vardef = Init_AST(AST_VARIABLE_DEFINITION);
-            ast_vardef->variable_definition_value = evaluated_value;
+            ast_vardef->variable_definition_value = evaluated_args[i];
             ast_vardef->variable_definition_variable_name = (char*) calloc(strlen(ast_var->variable_name) + 1, sizeof(char));
             strcpy(ast_vardef->variable_definition_variable_name, ast_var->variable_name);
             Scope_Add_Variable_Definition(call_scope, ast_vardef);
         }
+        free(evaluated_args);
         AST_T* result = Visitor_Visit(visitor, fdef->function_definition_body);
         visitor->returning = 0;
 
@@ -290,12 +415,12 @@ AST_T* builtin_function_for_each(Visitor_T* visitor, AST_T** args, int args_size
     return Init_AST(AST_NOOP);
 };
 
-AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size){
+AST_T* builtin_function_compare(Visitor_T* visitor, AST_T** args, int args_size){
     if (args_size > 3) {
-        printf("Tripped on function 'ifcomp', argument overflow. (%d to 2)\n", args_size);
+        printf("Tripped on function 'compare', argument overflow. (%d to 2)\n", args_size);
         exit(1);
     } else if (args_size < 3) {
-        printf("Tripped on function 'ifcomp', argument underflow. (2 to %d)\n", args_size);
+        printf("Tripped on function 'compare', argument underflow. (2 to %d)\n", args_size);
         exit(1);
     }
 
@@ -304,12 +429,12 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
     AST_T* comparison_type = Visitor_Visit(visitor, args[2]);
 
     if (comparison_type->type != AST_NUMBER) {
-        printf("Tripped on function 'ifcomp', ineligible type for comparison (%d) - must be a number type between 1 and 4\n", comparison_type->type);
+        printf("Tripped on function 'compare', ineligible type for comparison (%d) - must be a number type between 1 and 4\n", comparison_type->type);
         exit(1);
     };
 
     if (comp1->type != comp2->type) {
-        printf("Tripped on function 'ifcomp', incomparable types - got type '%d' and type '%d' (did you compare a variable and raw number?)\n", comp1->type, comp2->type);
+        printf("Tripped on function 'compare', incomparable types - got type '%d' and type '%d' (did you compare a variable and raw number?)\n", comp1->type, comp2->type);
         exit(1);
     }
 
@@ -334,6 +459,22 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                     return num;
                 }
                 break;
+            case AST_TABLE_DEFINITION:
+                if (comp1->table_definition_value == comp2->table_definition_value) {
+                    num->number_value=1;
+                    return num;
+                } else {
+                    return num;
+                }
+                break;
+            case AST_TABLE:
+                if (comp1->table_value == comp2->table_value) {
+                    num->number_value=1;
+                    return num;
+                } else {
+                    return num;
+                }
+                break;
             case AST_BOOL:
                 if (comp1->bool_value == comp2->bool_value) {
                     num->number_value=1;
@@ -343,7 +484,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     } else if (comparison_type->number_value == 1) {// is comp1 greater than comp2? (Returns [0-no, 1-yes)
@@ -357,7 +498,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     } else if (comparison_type->number_value == 2) {// is comp1 less than comp2? (Returns [0-no, 1-yes)
@@ -371,7 +512,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     } else if (comparison_type->number_value == 3) {// is comp1 greater than or equal to comp2? (Returns [0-no, 1-yes)
@@ -385,7 +526,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     } else if (comparison_type->number_value == 4) {// is comp1 less than or equal to comp2? (Returns [0-no, 1-yes)
@@ -399,7 +540,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     } else if (comparison_type->number_value == 5) {// is comp1 not equal to comp2? (Returns [0-no, 1-yes)
@@ -420,6 +561,22 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                     return num;
                 }
                 break;
+            case AST_TABLE_DEFINITION:
+                if (comp1->table_definition_value != comp2->table_definition_value) {
+                    num->number_value=1;
+                    return num;
+                } else {
+                    return num;
+                }
+                break;
+            case AST_TABLE:
+                if (comp1->table_value != comp2->table_value) {
+                    num->number_value=1;
+                    return num;
+                } else {
+                    return num;
+                }
+                break;
             case AST_BOOL:
                 if (comp1->bool_value != comp2->bool_value) {
                     num->number_value=1;
@@ -429,7 +586,7 @@ AST_T* builtin_function_if_comp(Visitor_T* visitor, AST_T** args, int args_size)
                 }
                 break;
             default:
-                printf("Tripped on 'ifcomp', unsupported type %d\n", comp1->type);
+                printf("Tripped on 'compare', unsupported type %d\n", comp1->type);
                 exit(1);
         };
     }

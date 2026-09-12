@@ -1,6 +1,3 @@
-// Asks for next token, and turns all the collected tokens into the abstract syntax tree
-// This allows the visitor to visit each node and perform the correct operations
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +8,7 @@
 #include "include/parser.h"
 #include "include/scope.h"
 
-extern char* read_file_to_string(const char *filename); // defined in main.c
+extern char* read_file_to_string(const char *filename);
 
 static Scope_T* Get_Node_Scope(Parser_T* Parser, AST_T* Node) {
     return Node->scope == (void*)0 ? Parser->Scope : Node->scope;
@@ -70,7 +67,18 @@ void Parser_Eat(Parser_T* Parser, int token_type){
 };
 
 AST_T* Parser_Parse(Parser_T* Parser, Scope_T* Scope){ // main entry, return AST syntax tree
-    return Parser_Parse_Statements(Parser, Scope);
+    AST_T* result = Parser_Parse_Statements(Parser, Scope);
+
+    if (Parser->current_token->type != TOKEN_EOF) {
+        printf(
+            "Tripped on trailing content, unexpected token '%s' with type %d after the last recognized statement\n",
+            Parser->current_token->value,
+            Parser->current_token->type
+        );
+        exit(1);
+    }
+
+    return result;
 };
 AST_T* Parser_Parse_Statement(Parser_T* Parser, Scope_T* Scope){
     switch (Parser->current_token->type){
@@ -271,34 +279,57 @@ AST_T* Parser_Parse_Table_Definition(Parser_T* Parser, Scope_T* Scope) {
     Parser_Eat(Parser, TOKEN_ID); // table name
     Parser_Eat(Parser, TOKEN_EQUALS); // equals sign
 
-    Parser_Eat(Parser, TOKEN_LSQUARE); // square bracket
-
     AST_T* table_def = Init_AST(AST_TABLE_DEFINITION);
     table_def->table_definition_name = table_def_name;
     table_def->scope=Scope;
 
-    table_def->table_definition_value = calloc(1, sizeof(struct AST_STRUCT*));
-    table_def->table_definition_value[0] = Parser_Parse_Expr(Parser, Scope);
-    table_def->table_size = 1;
+    if (Parser->current_token->type == TOKEN_LSQUARE) {
 
-    while (Parser->current_token->type == TOKEN_COMMA) {
-        Parser_Eat(Parser, TOKEN_COMMA);
-        table_def->table_size += 1;
-        table_def->table_definition_value = realloc(
-            table_def->table_definition_value,
-            table_def->table_size * sizeof(struct AST_STRUCT*)
+        Parser_Eat(Parser, TOKEN_LSQUARE); // square bracket
+
+        table_def->table_definition_value = calloc(1, sizeof(struct AST_STRUCT*));
+        table_def->table_definition_value[0] = Parser_Parse_Expr(Parser, Scope);
+        table_def->table_size = 1;
+
+        while (Parser->current_token->type == TOKEN_COMMA) {
+            Parser_Eat(Parser, TOKEN_COMMA);
+            table_def->table_size += 1;
+            table_def->table_definition_value = realloc(
+                table_def->table_definition_value,
+                table_def->table_size * sizeof(struct AST_STRUCT*)
+            );
+            table_def->table_definition_value[table_def->table_size - 1] = Parser_Parse_Expr(Parser, Scope);
+        }
+
+        Parser_Eat(Parser, TOKEN_RSQUARE); // square bracket
+
+        Parser->table_names_size += 1;
+        Parser->table_names = realloc(
+            Parser->table_names,
+            Parser->table_names_size * sizeof(char*)
         );
-        table_def->table_definition_value[table_def->table_size - 1] = Parser_Parse_Expr(Parser, Scope);
-    }
+        Parser->table_names[Parser->table_names_size - 1] = table_def_name;
+    } else if (Parser->current_token->type == TOKEN_ID) {
 
-    Parser_Eat(Parser, TOKEN_RSQUARE); // square bracket
+        AST_T* table = Parser_Parse_Id(Parser, Scope);
 
-    Parser->table_names_size += 1;
-    Parser->table_names = realloc(
-        Parser->table_names,
-        Parser->table_names_size * sizeof(char*)
-    );
-    Parser->table_names[Parser->table_names_size - 1] = table_def_name;
+        if (table->type != AST_TABLE) {
+            printf("Tripped on table assignment, not a table/invalid type\n");
+            exit(1);
+        };
+
+        AST_T* true_val = Scope_Get_Table_Definition(Scope, table->table_name);
+
+        table_def->table_size = true_val->table_size;
+        table_def->table_definition_value = true_val->table_definition_value;
+
+        Parser->table_names_size += 1;
+        Parser->table_names = realloc(
+            Parser->table_names,
+            Parser->table_names_size * sizeof(char*)
+        );
+        Parser->table_names[Parser->table_names_size - 1] = table_def_name;
+    };
 
     return table_def;
 };
@@ -540,7 +571,15 @@ AST_T* Parser_Parse_Function_Definition(Parser_T* Parser, Scope_T* Scope) {
     Parser_Eat(Parser, TOKEN_RPAREN); // function compound
     Parser_Eat(Parser, TOKEN_LCURLY); // function compound
 
+    size_t saved_table_names_size = Parser->table_names_size;
+    size_t saved_dict_names_size = Parser->dict_names_size;
+    size_t saved_class_names_size = Parser->class_names_size;
+
     ast->function_definition_body = Parser_Parse_Statements(Parser, Scope);
+
+    Parser->table_names_size = saved_table_names_size;
+    Parser->dict_names_size = saved_dict_names_size;
+    Parser->class_names_size = saved_class_names_size;
 
     Parser_Eat(Parser, TOKEN_RCURLY); // function compound
     ast->scope=Scope;

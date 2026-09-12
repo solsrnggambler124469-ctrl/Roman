@@ -1,0 +1,56 @@
+class String {
+    "main" : ""
+};
+
+func strcat(string1, string2) {
+    return string1 + string2;
+};
+
+func strlen(string) {
+    var times = 0;
+
+    func forfunc(){
+        times = times + 1;
+    };
+
+    ForEach(string, "forfunc");
+    return times;
+};
+
+func strrev(string) {
+    var times = 0;
+    var reversed = "";
+
+    var i = strlen(string);
+
+    for (i: compare(i, 0, 5): "--"){
+        reversed = strcat(reversed, charAt(string, i));
+    };
+    return reversed;
+};
+
+func strfind(string, substring) {
+    var times = 0;
+    var indexAt = 0;
+
+    var i = 0;
+    var max = strlen(string);
+
+    for (i: compare(i, max, 4): "++"){
+        if (compare(charAt(string, i), charAt(substring, 1), 0)) {
+            var x = i + 1;
+            var a = 0;
+            indexAt = i;
+            for (x: compare(x, strlen(substring), 4): "++"){
+               if (compare(charAt(string, x), charAt(substring, a), 5)) {
+                    return 0-1;
+               };
+               if (compare(a, strlen(substring), 2)){
+                    a = a + 1;
+               };
+            };
+        };
+    };
+    return indexAt;
+};
+

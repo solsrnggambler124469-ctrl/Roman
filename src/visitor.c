@@ -59,6 +59,7 @@ AST_T* Visitor_Visit(Visitor_T* visitor, AST_T* node){
         case AST_RETURN: return VV_Return(visitor, node); break;
         case AST_ASSIGNMENT: return VV_Assignment(visitor, node); break;
         case AST_CLASS_INSTANTIATION: return VV_Class_Instantiation(visitor, node); break;
+        case AST_INIT_CALL: return VV_Init_Call(visitor, node); break;
         case AST_VARIABLE: return VV_Variable(visitor, node); break;
         case AST_STRING: return VV_String(visitor, node); break;
         case AST_NUMBER: return VV_Number(visitor, node); break;
@@ -142,12 +143,23 @@ AST_T* VV_If_Else(Visitor_T* visitor, AST_T* node) {
     return Visitor_Visit(visitor, node->if_else_body);
 };
 AST_T* VV_For(Visitor_T* visitor, AST_T* node) {
-    AST_T* init_result = Visitor_Visit(visitor, node->for_variable);
-    if (init_result->type != AST_VARIABLE_DEFINITION) {
-        printf("Tripped on for loop, loop variable must be a 'var' definition\n");
+    char* loop_var_name;
+
+    if (node->for_variable->type == AST_VARIABLE_DEFINITION) {
+        // for (var i = 0 : ...) -- declares a fresh loop variable
+        AST_T* init_result = Visitor_Visit(visitor, node->for_variable);
+        loop_var_name = init_result->variable_definition_variable_name;
+    } else if (node->for_variable->type == AST_VARIABLE) {
+        // for (i : ...) -- reuses an already-declared variable
+        loop_var_name = node->for_variable->variable_name;
+        if (Scope_Get_Variable_Definition(node->scope, loop_var_name) == (void*)0) {
+            printf("Tripped on for loop, undefined variable '%s'\n", loop_var_name);
+            exit(1);
+        }
+    } else {
+        printf("Tripped on for loop, loop variable must be a 'var' definition or an existing variable\n");
         exit(1);
     }
-    char* loop_var_name = init_result->variable_definition_variable_name;
 
     AST_T* end_do = Visitor_Visit(visitor, node->for_does_at_end);
     if (end_do->type != AST_STRING) {
@@ -398,7 +410,7 @@ AST_T* VV_Assignment(Visitor_T* visitor, AST_T* node) {
     AST_T* target = node->assignment_target; // raw AST_ARROW: unevaluated so we can reach its left/right
 
     if (target->type == AST_VARIABLE) {
-        AST_T* value = Visitor_Visit(visitor, node->assignment_target);
+        AST_T* value = Visitor_Visit(visitor, node->assignment_value);
         AST_T* variable = Scope_Get_Variable_Definition(target->scope, target->variable_name);
 
         if (variable == NULL){
@@ -482,10 +494,14 @@ AST_T* VV_Function_Call(Visitor_T* visitor, AST_T* node) {
         return builtin_function_table_get_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "table_set_index") == 0) {
         return builtin_function_table_set_index(visitor, node->function_call_arguments, node->function_call_arguments_size);
+    } else if (strcmp(node->function_call_name, "charAt") == 0) {
+        return builtin_function_char_at(visitor, node->function_call_arguments, node->function_call_arguments_size);
+    } else if (strcmp(node->function_call_name, "stredit") == 0) {
+        return builtin_function_str_edit(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else if (strcmp(node->function_call_name, "ForEach") == 0) {
         return builtin_function_for_each(visitor, node->function_call_arguments, node->function_call_arguments_size);
-    } else if (strcmp(node->function_call_name, "ifcomp") == 0) {
-        return builtin_function_if_comp(visitor, node->function_call_arguments, node->function_call_arguments_size);
+    } else if (strcmp(node->function_call_name, "compare") == 0) {
+        return builtin_function_compare(visitor, node->function_call_arguments, node->function_call_arguments_size);
     } else {
         AST_T* fdef = Scope_Get_Function_Definition(node->scope, node->function_call_name);
 
@@ -501,17 +517,22 @@ AST_T* VV_Function_Call(Visitor_T* visitor, AST_T* node) {
         Scope_T* call_scope = fdef->function_definition_body->scope;
         size_t saved_scope_size = call_scope->variable_definitions_size;
 
+        AST_T** evaluated_args = (AST_T**) calloc(node->function_call_arguments_size, sizeof(struct AST_STRUCT*));
+        for (int i=0;i<(int)node->function_call_arguments_size;i++){
+            evaluated_args[i] = Visitor_Visit(visitor, node->function_call_arguments[i]);
+        }
+
         for (int i=0;i<(int)node->function_call_arguments_size;i++){
             AST_T* ast_var = (AST_T*) fdef->function_definition_args[i];
-            AST_T* ast_value = (AST_T*) node->function_call_arguments[i];
-            AST_T* evaluated_value = Visitor_Visit(visitor, ast_value);   // evaluate now, using the caller's current bindings
 
             AST_T* ast_vardef = Init_AST(AST_VARIABLE_DEFINITION);
-            ast_vardef->variable_definition_value = evaluated_value;
+            ast_vardef->variable_definition_value = evaluated_args[i];
             ast_vardef->variable_definition_variable_name = (char*) calloc(strlen(ast_var->variable_name) + 1, sizeof(char));
             strcpy(ast_vardef->variable_definition_variable_name, ast_var->variable_name);
             Scope_Add_Variable_Definition(call_scope, ast_vardef);
         }
+        free(evaluated_args);
+
         AST_T* result = Visitor_Visit(visitor, fdef->function_definition_body);
         visitor->returning = 0;
 
